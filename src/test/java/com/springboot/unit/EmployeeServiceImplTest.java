@@ -42,7 +42,7 @@ public class EmployeeServiceImplTest {
         doReturn(Optional.of(employees)).when(employeeRepository).findById(1);
 
         // Execute the service call
-        Optional<Employee> emp = employeeService.findById(1);
+        Optional<Employee> emp = employeeRepository.findById(1);
 
         // Assert the response
         assertTrue(emp.isPresent(), "Employee was not found");
