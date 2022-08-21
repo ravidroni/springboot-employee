@@ -1,84 +1,216 @@
 package com.springboot.integration;
 
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.springboot.model.Employee;
+import com.springboot.repository.EmployeeRepository;
 import org.junit.jupiter.api.Test;
-import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.http.*;
-import org.springframework.test.context.junit4.SpringRunner;
-import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import java.util.ArrayList;
+import java.util.List;
 
-@RunWith(SpringRunner.class)
+import static org.hamcrest.Matchers.is;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-
+@AutoConfigureMockMvc
 public class EmployeeControllerTest {
+
     @Autowired
-    private TestRestTemplate restTemplate;
+    private MockMvc mockMvc;
 
-    @LocalServerPort
-    private int port;
+    @Autowired
+    private EmployeeRepository employeeRepository;
 
-    private String getRootUrl() {
-        return "http://localhost:" + port;
-    }
+    @Autowired
+    private ObjectMapper objectMapper;
 
-    @Test
-    public void testGetAllEmployees() {
-        HttpHeaders headers = new HttpHeaders();
-        HttpEntity<String> entity = new HttpEntity<String>(null, headers);
-        ResponseEntity<String> response = restTemplate.exchange(getRootUrl() + "api/employees",
-                HttpMethod.GET, entity, String.class);
-        assertNotNull(response.getBody());
-    }
 
     @Test
-    public void testGetEmployeeById() {
-        Employee employee = restTemplate.(getRootUrl() + "/{id}", Employee.class);
-        System.out.println(employee.getId());
-        assertNotNull(employee);
+    public void addEmployee() throws Exception {
+
+        // given - precondition or setup
+        Employee employee = Employee.builder()
+                .name("ravi")
+                .email("ravi@gmail.com")
+                .role("developer")
+                .build();
+
+        // when - action or behaviour that we are going test
+        ResultActions response = mockMvc.perform(post("/api/employees/create")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(employee)));
+
+        // then - verify the result or output using assert statements
+        response.andDo(print()).
+                andExpect(status().isCreated())
+                .andExpect(jsonPath("$.name",
+                        is(employee.getName())))
+                .andExpect(jsonPath("$.email",
+                        is(employee.getEmail())))
+                .andExpect(jsonPath("$.role",
+                        is(employee.getRole())));
+
     }
 
+    // JUnit test for Get All employees REST API
     @Test
-    public void testCreateEmployee() {
-        Employee employee = new Employee();
-        employee.setName("ravi");
-        employee.setEmail("ravi@gmail.com");
-        employee.setRole("developer");
-        ResponseEntity<Employee> postResponse = restTemplate.postForEntity(getRootUrl() + "/create", employee, Employee.class);
-        assertNotNull(postResponse);
-        assertNotNull(postResponse.getBody());
+    public void getAllEmployees() throws Exception {
+        // given - precondition or setup
+        List<Employee> listOfEmployees = new ArrayList<Employee>();
+        listOfEmployees.add(Employee.builder().name("ravi").email("ravi@gmail.com").role("developer").build());
+        listOfEmployees.add(Employee.builder().name("arun").email("arun@gmail.com").role("tester").build());
+        employeeRepository.saveAll(listOfEmployees);
+        // when -  action or the behaviour that we are going test
+        ResultActions response = mockMvc.perform(get("/api/employees"));
+
+        // then - verify the output
+        response.andExpect(status().isOk())
+                .andDo(print())
+                .andExpect(jsonPath("$.size()",
+                        is(listOfEmployees.size())));
+
+
     }
 
+    // positive scenario - valid employee id
+    // JUnit test for GET employee by id REST API
     @Test
-    public void testUpdateEmployee() {
-        int id = 1;
-        Employee employee = restTemplate.getForObject(getRootUrl() + "/{id}" + id, Employee.class);
-        employee.setName("raj");
-        employee.setEmail("raj@gmail.com");
-        employee.setRole("tester");
-        restTemplate.put(getRootUrl() + "/{id}" + id, employee);
-        Employee updatedEmployee = restTemplate.getForObject(getRootUrl() + "/{id}" + id, Employee.class);
-        assertNotNull(updatedEmployee);
+    public void getEmployeeById() throws Exception {
+        // given - precondition or setup
+        Employee employee = Employee.builder()
+                .name("ravi")
+                .email("ravi@gmail.com")
+                .role("developer")
+                .build();
+
+        employeeRepository.save(employee);
+
+        // when -  action or the behaviour that we are going test
+        ResultActions response = mockMvc.perform(get("/api/employees/{id}", employee.getId()));
+
+        // then - verify the output
+        response.andExpect(status().isOk())
+                .andDo(print())
+                .andExpect(jsonPath("$.name", is(employee.getName())))
+                .andExpect(jsonPath("$.email", is(employee.getEmail())))
+                .andExpect(jsonPath("$.role", is(employee.getRole())));
+
     }
 
+    // negative scenario - valid employee id
+    // JUnit test for GET employee Not found by id REST API
     @Test
-    public void testDeleteEmployee() {
-        int id = 2;
-        Employee employee = restTemplate.getForObject(getRootUrl() + "/{id}" + id, Employee.class);
-        assertNotNull(employee);
-        restTemplate.delete(getRootUrl() + "/{id}" + id);
-        try {
-            employee = restTemplate.getForObject(getRootUrl() + "/{id}" + id, Employee.class);
-        } catch (final HttpClientErrorException e) {
-            assertEquals(e.getStatusCode(), HttpStatus.NOT_FOUND);
-        }
+    public void getEmployeeNotFoundById() throws Exception {
+        // given - precondition or setup
+        int employeeId = 2;
+        Employee employee = Employee.builder()
+                .name("ravi")
+                .email("ravi@gmail.com")
+                .role("developer")
+                .build();
+
+        employeeRepository.save(employee);
+
+        // when -  action or the behaviour that we are going test
+        ResultActions response = mockMvc.perform(get("/api/employees/{id}", employeeId));
+
+        // then - verify the output
+        response.andExpect(status().isNotFound())
+                .andDo(print());
+
+    }
+
+    // JUnit test for update employee REST API - positive scenario
+    @Test
+    public void updateEmployee() throws Exception {
+        // given - precondition or setup
+        Employee savedEmployee = Employee.builder()
+                .name("ravi")
+                .email("ravi@gmail.com")
+                .role("developer")
+                .build();
+
+        employeeRepository.save(savedEmployee);
+
+        Employee updatedEmployee = Employee.builder()
+                .name("ramesh")
+                .email("ramesh@gmail.com")
+                .role("developer")
+                .build();
+
+
+        // when -  action or the behaviour that we are going test
+        ResultActions response = mockMvc.perform(put("/api/employees/{id}", savedEmployee.getId())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(updatedEmployee)));
+
+
+        // then - verify the output
+        response.andExpect(status().isOk())
+                .andDo(print())
+                .andExpect(jsonPath("$.name", is(updatedEmployee.getName())))
+                .andExpect(jsonPath("$.email", is(updatedEmployee.getEmail())))
+                .andExpect(jsonPath("$.role", is(updatedEmployee.getRole())));
+    }
+
+    // JUnit test for update employee Not Found REST API - negative scenario
+    @Test
+    public void updateEmployeeNotFound() throws Exception {
+        // given - precondition or setup
+        int employeeId = 2;
+        Employee savedEmployee = Employee.builder()
+                .name("ravi")
+                .email("ravi@gmail.com")
+                .role("developer")
+                .build();
+
+        employeeRepository.save(savedEmployee);
+
+        Employee updatedEmployee = Employee.builder()
+                .name("ramesh")
+                .email("ramesh@gmail.com")
+                .role("developer")
+                .build();
+
+
+        // when -  action or the behaviour that we are going test
+        ResultActions response = mockMvc.perform(put("/api/employees/{id}", employeeId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(updatedEmployee)));
+
+        // then - verify the output
+        response.andExpect(status().isNotFound())
+                .andDo(print());
+    }
+
+    // JUnit test for delete employee REST API
+    @Test
+    public void givenEmployeeId_whenDeleteEmployee_thenReturn200() throws Exception {
+        // given - precondition or setup
+        Employee savedEmployee = Employee.builder()
+                .name("ravi")
+                .email("ravi@gmail.com")
+                .role("developer")
+                .build();
+
+        employeeRepository.save(savedEmployee);
+
+        // when -  action or the behaviour that we are going test
+        ResultActions response = mockMvc.perform(delete("/api/employees/{id}", savedEmployee.getId()));
+
+        // then - verify the output
+        response.andExpect(status().isOk())
+                .andDo(print());
     }
 }
-
